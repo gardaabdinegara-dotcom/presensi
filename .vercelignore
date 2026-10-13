@@ -1,0 +1,7 @@
+.env*
+credentials*.json
+*service-account*.json
+AKSES_ADMIN_LOKAL.txt
+.qa/
+tests/
+*.zip

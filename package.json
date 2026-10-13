@@ -1,0 +1,17 @@
+{
+  "name": "garda-presensi-design-preview",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Preview desain responsif Presensi dan Rapor Garda Abdi Negara",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/preview-server.mjs",
+    "preview": "node scripts/preview-server.mjs",
+    "build": "node scripts/build.mjs",
+    "check": "node --check public/app.js && node --check public/showcase.js && node --check scripts/preview-server.mjs && node --check scripts/build.mjs"
+  },
+  "dependencies": {
+    "google-auth-library": "^11.3.0",
+    "qrcode": "^1.5.4"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vercel/
+.env*
+credentials*.json
+*service-account*.json
+*.log
+.qa/
+AKSES_ADMIN_LOKAL.txt
+*.zip

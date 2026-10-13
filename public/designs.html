@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1928">
+  <meta name="description" content="Tiga pilihan desain aplikasi Presensi dan Rapor Garda Abdi Negara untuk desktop dan ponsel.">
+  <title>GAN — Pilih tampilan aplikasi</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/showcase.css">
+  <script src="/showcase.js" defer></script>
+</head>
+<body>
+  <header class="lab-toolbar">
+    <a class="lab-brand" href="/" aria-label="Beranda preview Garda Abdi Negara"><span class="lab-mark">G<span>•</span></span><span>GARDA AB​​DI NEGARA<small>STUDIO TAMPILAN / 01</small></span></a>
+    <nav class="design-choices" aria-label="Pilihan desain">
+      <button data-design="komando" aria-pressed="true"><i class="swatch komando"></i><span>01 <b>Komando</b></span></button>
+      <button data-design="akademi" aria-pressed="false"><i class="swatch akademi"></i><span>02 <b>Akademi</b></span></button>
+      <button data-design="patriot" aria-pressed="false"><i class="swatch patriot"></i><span>03 <b>Patriot</b></span></button>
+    </nav>
+    <div class="lab-controls">
+      <div class="device-switch" aria-label="Ukuran preview">
+        <button data-device="desktop" aria-pressed="true" title="Tampilan desktop"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg><span>Desktop</span></button>
+        <button data-device="mobile" aria-pressed="false" title="Tampilan ponsel"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg><span>Mobile</span></button>
+      </div>
+      <a id="full-link" href="/app.html?design=komando" target="_blank" rel="noopener" title="Buka tampilan penuh"><svg viewBox="0 0 24 24"><path d="M14 3h7v7m0-7L10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg><span>Buka penuh</span></a>
+    </div>
+  </header>
+  <div class="lab-caption"><span><i></i> PREVIEW INTERAKTIF · DATA SIMULASI</span><p id="design-description">Dashboard operasional yang tegas, ringkas, dan berfokus pada kegiatan hari ini.</p><button id="compare-button">Bandingkan desain <span>↗</span></button></div>
+  <main id="preview-stage" class="preview-stage desktop">
+    <div class="device-shell"><div class="phone-camera" aria-hidden="true"></div><iframe id="app-frame" src="/app.html?design=komando" title="Preview Komando — Garda Abdi Negara" allow="camera 'none'; microphone 'none'"></iframe></div>
+    <aside class="mobile-notes"><span class="note-eyebrow">DIRANCANG UNTUK PONSEL</span><h1>Nyaman di tangan.<br>Lengkap di meja.</h1><p id="mobile-description">Presensi dan verifikasi berada dalam jangkauan ibu jari. Navigasi bawah menggantikan sidebar desktop.</p><div class="note-rule"></div><p>Gunakan menu <strong>Peran</strong> untuk mencoba tampilan admin, pengajar, siswa, dan orang tua.</p><div class="note-size">390 × 844 <span>CSS pixels</span></div></aside>
+  </main>
+  <dialog id="compare-dialog" class="compare-dialog"><div class="compare-heading"><div><span class="note-eyebrow">PILIH KARAKTER APLIKASINYA</span><h2>Tiga arah. Satu Garda.</h2><p>Semua pilihan memiliki alur ponsel dan desktop.</p></div><button id="close-compare" aria-label="Tutup perbandingan">✕</button></div><div id="compare-grid" class="compare-grid"></div></dialog>
+</body>
+</html>
