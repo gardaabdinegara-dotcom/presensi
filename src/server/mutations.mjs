@@ -31,15 +31,19 @@ export async function mutation(store,user,operation,payload){
     editor(user);const existing=payload.id?sessionFor(store,user,payload.id,{manage:true}):null;if(existing?.status==='closed')problem('Sesi selesai tidak dapat diubah. Buka kembali jika perlu koreksi.',409);
     const start=text(payload.start,'Jam mulai',5),end=text(payload.end,'Jam selesai',5);if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end)||start>=end)problem('Jam kegiatan tidak valid.');
     const teacherId=user.role==='teacher'?user.id:payload.teacherId||user.id;const teacher=store.Users.get(teacherId);if(!teacher?.active||!['admin','teacher'].includes(teacher.role))problem('Pengajar tidak valid.');
+    const group=groupFor(store,user,payload.group);
+    if(teacher.role==='teacher'&&(group==='Semua kelas'?settings.groups.some(value=>!(teacher.groups||[]).includes(value)):!(teacher.groups||[]).includes(group)))problem('Pengajar belum ditugaskan pada kelas yang dipilih.');
     const type=enumValue(payload.type,['Akademik','SKD','Psikotes','Fisik'],'Bidang');
-    events.push(event('Sessions',existing?.id||randomUUID(),{...(existing?clean(existing):{}),name:text(payload.name,'Nama kegiatan',80),date:isoDate(payload.date||today),start,end,type,group:groupFor(store,user,payload.group),teacherId,teacher:teacher.name,status:existing?.status||'upcoming',icon:type==='Fisik'?'run':type==='Akademik'?'book':type==='Psikotes'?'star':'chart'}));
+    events.push(event('Sessions',existing?.id||randomUUID(),{...(existing?clean(existing):{}),name:text(payload.name,'Nama kegiatan',80),date:isoDate(payload.date||today),start,end,type,group,teacherId,teacher:teacher.name,status:existing?.status||'upcoming',icon:type==='Fisik'?'run':type==='Akademik'?'book':type==='Psikotes'?'star':'chart'}));
   }else if(operation==='setSessionStatus'){
-    editor(user);const item=sessionFor(store,user,payload.sessionId,{manage:true});const status=enumValue(payload.status,['active','closed','upcoming'],'Status sesi');
+    editor(user);const item=sessionFor(store,user,payload.sessionId,{manage:true});const status=enumValue(payload.status,['active','closed','upcoming','cancelled'],'Status sesi');
     if(status==='active'&&item.date!==today)problem('Sesi hanya dapat dibuka pada tanggal kegiatannya.');
     if(status==='closed'&&[...store.Attendance.values()].some(record=>record.sessionId===item.id&&record.status==='pending'))problem('Verifikasi atau tolak pengajuan yang menunggu sebelum menutup sesi.',409);
-    events.push(event('Sessions',item.id,{...clean(item),status}));message=status==='closed'?'Sesi ditutup. Siswa tanpa catatan dihitung alfa pada rekap.':'Status sesi diperbarui.';
+    const studentIds=item.studentIds||[...store.Students.values()].filter(student=>inSession(student,item)).map(student=>student.id);
+    events.push(event('Sessions',item.id,{...clean(item),status,...(status==='active'||status==='closed'?{studentIds}:{})}));message=status==='closed'?'Sesi ditutup. Siswa tanpa catatan dihitung alfa pada rekap.':'Status sesi diperbarui.';
   }else if(['setAttendance','approveAttendance','approveAll','submitAttendance'].includes(operation)){
     const session=sessionFor(store,user,payload.sessionId,{manage:operation!=='submitAttendance'});
+    if(session.status==='cancelled')problem('Sesi dibatalkan dan tidak menerima catatan presensi.',409);
     if(operation!=='submitAttendance')editor(user);
     if(operation==='submitAttendance'){
       if(user.role!=='student')problem('Presensi mandiri khusus akun siswa.',403);
@@ -93,9 +97,9 @@ export async function mutation(store,user,operation,payload){
   }else if(operation==='saveReport'||operation==='publishReport'||operation==='reviseReport'){
     if(operation==='publishReport'||operation==='reviseReport')admin(user);else editor(user);
     const item=studentFor(store,user,payload.studentId,{write:true});const period=text(payload.period,'Periode',7);if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(period))problem('Periode rapor tidak valid.');const id=`${item.id}:${period}`;const existing=store.Reports.get(id);
-    if(existing?.published&&operation==='saveReport')problem('Buat revisi draf terlebih dahulu.',409);
+    if(existing?.published&&['saveReport','publishReport'].includes(operation))problem('Buat revisi draf terlebih dahulu.',409);
     if(operation==='reviseReport') {events.push(event('Reports',id,{...(existing?clean(existing):{}),published:false,version:(existing?.version||1)+1,note:existing?.note||''}));message='Revisi draf dibuat. Arsip versi lama tetap ada dalam riwayat spreadsheet.';}
-    else{const snapshot=buildReport(store,item,period);const note=text(payload.note??existing?.note??'','Catatan rapor',1000,{optional:true});events.push(event('Reports',id,{published:operation==='publishReport',version:existing?.version||1,note,snapshot,teacher:user.name,publishedAt:operation==='publishReport'?new Date().toISOString():null}));message=operation==='publishReport'?'Rapor diterbitkan. Nilai dan aturan tersimpan sebagai arsip versi ini.':'Draf rapor disimpan.';}
+    else{const snapshot=buildReport(store,item,period);const note=text(payload.note??existing?.note??'','Catatan rapor',1000,{optional:true});const value={published:operation==='publishReport',version:existing?.version||1,note,snapshot,teacher:existing?.teacher||user.name,publishedBy:operation==='publishReport'?user.id:null,publishedAt:operation==='publishReport'?new Date().toISOString():null};events.push(event('Reports',id,value));if(value.published)events.push(event('Reports',`${id}:v${value.version}`,{...value,archiveOf:id}));message=operation==='publishReport'?'Rapor diterbitkan. Nilai dan aturan tersimpan sebagai arsip versi ini.':'Draf rapor disimpan.';}
   }else if(operation==='saveSettings'){
     admin(user);const timezone=enumValue(payload.timezone||settings.timezone,['Asia/Jakarta','Asia/Makassar','Asia/Jayapura'],'Zona waktu');const a=numeric(payload.gradeA??settings.gradeA,'Batas A',1,100),b=numeric(payload.gradeB??settings.gradeB,'Batas B',1,99),c=numeric(payload.gradeC??settings.gradeC,'Batas C',0,98);if(!(a>b&&b>c))problem('Batas predikat harus A > B > C.');
     const groups=(Array.isArray(payload.groups)?payload.groups:String(payload.groups||settings.groups.join(',')).split(',')).map(item=>text(item,'Kelas',40));if(!groups.length||groups.length>10||new Set(groups).size!==groups.length)problem('Daftar kelas tidak valid.');

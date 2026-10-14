@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import QRCode from 'qrcode';
 import { configuration } from './config.mjs';
-import { readStore,appendEvents,applyEvents } from './sheets.mjs';
+import { readStore,appendEvents,applyEvents,entityHistory } from './sheets.mjs';
 import { secureToken,sha256,sign,sessionUser,publicUser,cookieHeader,verifyPassword,requireOrigin,requireCsrf,qrToken } from './auth.mjs';
-import { viewData,settingsFor,canManageSession,dateFor } from './domain.mjs';
+import { viewData,settingsFor,canManageSession,canReadStudent,dateFor } from './domain.mjs';
 import { mutation,problem,text } from './mutations.mjs';
 
 const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store, private','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin'};
@@ -21,18 +21,27 @@ export async function handleRequest(request){
       const store=await readStore({fresh:true});const ip=(request.headers.get('x-forwarded-for')||'local').split(',')[0].trim();const accountKey=sign(`login:${username}`),ipKey=sign(`ip:${ip}`);const recent=[...store.Auth.values()].filter(item=>item.type==='attempt'&&!item.success&&item.at>Date.now()-15*60*1000);
       if(recent.filter(item=>item.accountKey===accountKey).length>=5||recent.filter(item=>item.ipKey===ipKey).length>=25)return response({error:'Terlalu banyak percobaan. Coba kembali setelah 15 menit.'},429,{'Retry-After':'900'});
       const user=[...store.Users.values()].find(item=>item.username===username&&item.active);
-      const valid=user?await verifyPassword(password,user.passwordHash):false;
+      const dummyHash=`scrypt$131072$8$1$${'0'.repeat(32)}$${'0'.repeat(128)}`;
+      const valid=await verifyPassword(password,user?.passwordHash||dummyHash)&&Boolean(user);
       const attempt={collection:'Auth',id:randomUUID(),value:{type:'attempt',accountKey,ipKey,at:Date.now(),success:valid}};
       if(!valid){await appendEvents([attempt],{actorId:'login'});return response({error:'Username atau password tidak sesuai.'},401);}
       const token=secureToken();const value={type:'session',userId:user.id,authVersion:user.authVersion,expiresAt:Date.now()+configuration().sessionHours*3600000,createdAt:Date.now()};
       await appendEvents([attempt,{collection:'Auth',id:sha256(token),value}],{actorId:user.id});
       return response({user:publicUser(user),csrf:sign(`csrf:${token}`)},200,{'Set-Cookie':cookieHeader(token)});
     }
-    const store=await readStore();const auth=sessionUser(request,store);
+    const store=await readStore({fresh:method==='POST'});const auth=sessionUser(request,store);
     if(!auth)return response({error:'Silakan masuk untuk menggunakan data real.'},401);
     if(method==='GET'&&route==='/api/session')return response({user:publicUser(auth.user),csrf:auth.csrf});
     if(method==='POST'&&route==='/api/logout'){requireCsrf(request,auth);await appendEvents([{collection:'Auth',id:sha256(auth.token),remove:true}],{actorId:auth.user.id});return response({ok:true},200,{'Set-Cookie':cookieHeader()});}
     if(method==='GET'&&route==='/api/data')return response({data:viewData(store,auth.user,url.searchParams.get('period')),csrf:auth.csrf});
+    if(method==='GET'&&route==='/api/report-history'){
+      const studentId=url.searchParams.get('studentId'),period=url.searchParams.get('period');const student=store.Students.get(studentId);
+      if(!student||!canReadStudent(auth.user,student))problem('Akses rapor tidak diizinkan.',403);
+      if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(period||''))problem('Periode rapor tidak valid.');
+      const history=await entityHistory('Reports',`${studentId}:${period}`);const versions=new Map();
+      for(const item of history)if(item.published&&item.snapshot)versions.set(item.version,item);
+      return response({versions:[...versions.values()].sort((a,b)=>b.version-a.version)});
+    }
     if(method==='POST'&&route==='/api/qr'){
       requireCsrf(request,auth);const body=await readJson(request);const session=store.Sessions.get(body.sessionId);const settings=settingsFor(store);if(!session||!canManageSession(auth.user,session))problem('Akses sesi tidak diizinkan.',403);if(session.status!=='active'||session.date!==dateFor(settings.timezone))problem('QR hanya tersedia untuk sesi aktif hari ini.',409);
       const expiresAt=Date.now()+10*60*1000;const token=qrToken(session.id,expiresAt);const origin=configuration().origin||url.origin;const link=`${origin}/?qr=${encodeURIComponent(token)}&session=${encodeURIComponent(session.id)}`;
@@ -41,7 +50,7 @@ export async function handleRequest(request){
     if(method==='POST'&&route==='/api/mutate'){
       requireCsrf(request,auth);const body=await readJson(request);const operation=text(body.operation,'Tindakan',40);const operationId=text(body.operationId,'ID permintaan',80);if(!/^[a-zA-Z0-9-]{12,80}$/.test(operationId))problem('ID permintaan tidak valid.');
       if(auth.user.mustChangePassword&&operation!=='changePassword')problem('Ganti password awal sebelum melakukan perubahan.',403);
-      const fresh=await readStore({fresh:true});const current=sessionUser(request,fresh);if(!current)problem('Sesi tidak berlaku. Masuk kembali.',401);
+      const fresh=store;const current=auth;
       const existing=fresh.Audit.get(operationId);if(existing){if(existing.actorId!==auth.user.id||existing.action!==operation)problem('ID permintaan sudah digunakan.',409);return response({data:viewData(fresh,current.user,body.period),message:'Permintaan ini sudah tersimpan sebelumnya.',csrf:auth.csrf});}
       const result=await mutation(fresh,current.user,operation,body.payload||{});const audit={collection:'Audit',id:operationId,value:{at:new Date().toISOString(),actorId:current.user.id,actor:current.user.name,action:operation,target:result.events.map(item=>`${item.collection}:${item.id}`).join(',')}};
       if(result.events.length)await appendEvents([...result.events,audit],{actorId:current.user.id,operationId});

@@ -1,17 +1,28 @@
 {
-  "name": "garda-presensi-design-preview",
-  "version": "0.1.0",
+  "name": "garda-abdi-negara",
+  "version": "1.0.0",
   "private": true,
-  "description": "Preview desain responsif Presensi dan Rapor Garda Abdi Negara",
+  "description": "Presensi, penilaian dan rapor Garda Abdi Negara berbasis Google Sheets",
   "type": "module",
   "scripts": {
     "dev": "node scripts/preview-server.mjs",
+    "start": "node scripts/preview-server.mjs",
     "preview": "node scripts/preview-server.mjs",
     "build": "node scripts/build.mjs",
-    "check": "node --check public/app.js && node --check public/showcase.js && node --check scripts/preview-server.mjs && node --check scripts/build.mjs"
+    "check": "node scripts/check.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "setup": "node scripts/setup.mjs",
+    "setup:inspect": "node scripts/setup.mjs --inspect",
+    "test:real": "node scripts/smoke-real.mjs"
   },
   "dependencies": {
     "google-auth-library": "^11.3.0",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "acorn": "^8.19.0"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }

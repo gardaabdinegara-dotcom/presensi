@@ -12,9 +12,10 @@ export function toMinutes(time) { const [hours,minutes] = String(time).split(':'
 export function canReadStudent(user,item) { return user.role === 'admin' || user.role === 'teacher' && (user.groups || []).includes(item.group) || ['student','parent'].includes(user.role) && (user.studentIds || []).includes(item.id); }
 export function canTeach(user,item) { return user.role === 'admin' || user.role === 'teacher' && (user.groups || []).includes(item.group); }
 export function canManageSession(user,item) { return user.role === 'admin' || user.role === 'teacher' && item.teacherId === user.id; }
-export function inSession(item,session) { return item.active !== false && (session.group === 'Semua kelas' || session.group === item.group) && (!item.enrolledAt || session.date >= item.enrolledAt); }
+export function inSession(item,session) { return item.active !== false && (Array.isArray(session.studentIds) ? session.studentIds.includes(item.id) : (session.group === 'Semua kelas' || session.group === item.group) && (!item.enrolledAt || session.date >= item.enrolledAt)); }
 export function gradeOf(value,settings=defaultSettings) { return value === null ? '—' : value >= settings.gradeA ? 'A' : value >= settings.gradeB ? 'B' : value >= settings.gradeC ? 'C' : 'D'; }
 export function labelOf(value,settings=defaultSettings) { return value === null ? 'Belum diisi' : value >= settings.gradeA ? 'Sangat baik' : value >= settings.gradeB ? 'Baik' : value >= settings.gradeC ? 'Cukup' : 'Perlu pembinaan'; }
+export function disciplineLabel(value,settings=defaultSettings) { const rule=settings.discipline||defaultSettings.discipline;return value===null?'Belum ada sesi selesai':value>=rule.excellent?'Sangat disiplin':value>=rule.good?'Disiplin':value>=rule.fair?'Cukup disiplin':'Perlu pembinaan'; }
 export function normalizedScore(test) { return test.value === undefined || test.value === null ? null : Number(test.value); }
 export function viewData(store,user,period) {
   const settings = settingsFor(store);
@@ -44,7 +45,9 @@ export function viewData(store,user,period) {
     data.fitness[item.id]=Object.fromEntries(Object.keys(fitnessLabels).map(key=>{const items=tests.filter(test=>test.category==='fitness'&&test.component===key);return [key,{raw:items.at(-1)?.raw??null,scores:items.map(normalizedScore),unit:key==='lari'?'m':key==='shuttle'?'detik':'kali',protocol:items.at(-1)?.protocol||'Skor pengajar'}];}));
     const health=[...store.Health.values()].filter(record=>record.studentId===item.id&&!record.deleted&&record.date.startsWith(month)).sort((a,b)=>`${a.date}${a._at}`.localeCompare(`${b.date}${b._at}`)).at(-1);
     data.health[item.id]=health||{height:null,weight:null,systolic:null,diastolic:null,date:null,note:'Belum ada pengukuran.'};
-    const report=store.Reports.get(`${item.id}:${month}`);
+    const reportKey=`${item.id}:${month}`;
+    let report=store.Reports.get(reportKey);
+    if(!['admin','teacher'].includes(user.role)&&!report?.published)report=[...store.Reports.values()].filter(value=>value.archiveOf===reportKey&&value.published).sort((a,b)=>b.version-a.version)[0];
     data.reports[item.id]=report&&(user.role==='admin'||user.role==='teacher'||report.published)?report:{published:false,version:1,note:''};
   }
   for(const session of allSessions) {
@@ -80,8 +83,8 @@ export function buildReport(store,item,period) {
     {title:'PSIKOTES',rows:rows(psychLabels,data.psych[item.id])},
     {title:'PERKEMBANGAN FISIK',rows:Object.entries(fitnessLabels).map(([key,label])=>{const value=data.fitness[item.id][key];const score=mean(value.scores);return [label,value.raw===null?'—':`${format(value.raw)} ${value.unit}`,score,labelOf(score,settings)];})},
     {title:'TUGAS',rows:tasks.length?tasks.map(task=>{const submission=data.submissions.find(value=>value.assignmentId===task.id&&value.studentId===item.id);return [task.name,submission?.status==='verified'?'Dikumpulkan':submission?.status==='submitted'?'Menunggu verifikasi':'Belum dikumpulkan',submission?.score??null,submission?.note||''];}):[['Belum ada tugas bulan ini','—',null,'Belum diisi']]},
-    {title:'KESEHATAN',rows:[['Tinggi badan',health.height===null?'—':`${format(health.height)} cm`,null,'Pengukuran terakhir'],['Berat badan',health.weight===null?'—':`${format(health.weight)} kg`,null,health.date||'Belum diisi'],['Tekanan darah',health.systolic===null?'—':`${health.systolic}/${health.diastolic} mmHg`,null,health.note||'Catatan pemeriksa']]},
-    {title:'KEHADIRAN',rows:[['Hadir',`${student.present} sesi`,null,attendance===null?'Belum ada sesi selesai':`${format(attendance)}% dari ${student.monthTotal} sesi`],['Izin / Sakit / Alfa',`${student.izin} / ${student.sakit} / ${student.alfa}`,null,'Dihitung dari sesi selesai'],['Terlambat',`${student.late} sesi`,null,'Tetap dihitung hadir']]}
+    {title:'KESEHATAN',rows:[['Tinggi badan',health.height===null?'—':`${format(health.height)} cm`,null,'Pengukuran terakhir'],['Berat badan',health.weight===null?'—':`${format(health.weight)} kg`,null,health.date||'Belum diisi'],['Indeks Massa Tubuh',health.height&&health.weight?format(health.weight/(health.height/100)**2):'—',null,'Interpretasi oleh pemeriksa'],['Tekanan darah',health.systolic===null?'—':`${health.systolic}/${health.diastolic} mmHg`,null,health.note||'Catatan pemeriksa']]},
+    {title:'KEHADIRAN',rows:[['Hadir',`${student.present} sesi`,null,attendance===null?'Belum ada sesi selesai':`${format(attendance)}% · ${disciplineLabel(attendance,settings)}`],['Izin / Sakit / Alfa',`${student.izin} / ${student.sakit} / ${student.alfa}`,null,`${student.monthTotal} sesi selesai`],['Terlambat',`${student.late} sesi`,null,'Tetap dihitung hadir']]}
   ];
   return {student:{id:student.id,name:student.name,group:student.group,target:student.target},period,sections,settings:{name:settings.name,location:settings.location,gradeA:settings.gradeA,gradeB:settings.gradeB,gradeC:settings.gradeC,skd:profile},summary:{skd:total,attendance,academic:mean(Object.values(data.academic[item.id]).map(mean).filter(value=>value!==null)),physical:mean(Object.values(data.fitness[item.id]).map(value=>mean(value.scores)).filter(value=>value!==null))},createdAt:new Date().toISOString()};
 }

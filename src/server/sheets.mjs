@@ -8,6 +8,7 @@ let authPromise;
 let sheetMap;
 let lastRead;
 let readPromise;
+let generation=0;
 const cacheMilliseconds = 1200;
 function authenticatedClient() {
   authPromise ||= serviceCredentials().then(credentials => new GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets'] }).getClient());
@@ -72,19 +73,25 @@ export function reduceRows(rows = []) {
 }
 export async function readStore({ fresh = false } = {}) {
   if (!fresh && lastRead && Date.now() - lastRead.time < cacheMilliseconds) return lastRead.value;
-  if (!fresh && readPromise) return readPromise;
+  if (readPromise) return readPromise;
+  const readingGeneration=generation;
   const work = (async () => {
     const params = new URLSearchParams();
     for (const name of collections) params.append('ranges', `'GAN_${name}'!A2:F`);
     const result = await sheetsRequest(`/values:batchGet?${params}`);
     const store = Object.fromEntries(collections.map((name, index) => [name, reduceRows(result.valueRanges?.[index]?.values)]));
-    lastRead = { time: Date.now(), value: store };
+    if(generation===readingGeneration)lastRead = { time: Date.now(), value: store };
     return store;
   })();
-  if (!fresh) readPromise = work;
-  try { return await work; } finally { if (!fresh) readPromise = undefined; }
+  readPromise = work;
+  try { return await work; } finally { if (readPromise===work) readPromise = undefined; }
 }
-export function invalidateStore() { lastRead = undefined; readPromise = undefined; }
+export function invalidateStore() { generation++;lastRead = undefined; readPromise = undefined; }
+export async function entityHistory(collection,entityId) {
+  if(!collections.includes(collection))throw new Error('INVALID_COLLECTION');
+  const result=await sheetsRequest(`/values/${encodeURIComponent(`'GAN_${collection}'!A2:F`)}`);
+  return (result.values||[]).filter(row=>row[3]===entityId&&row[4]==='UPSERT').map(row=>({eventId:row[0],at:row[1],...JSON.parse(row[5]||'{}')}));
+}
 export async function appendEvents(events, { actorId = 'system', operationId = randomUUID() } = {}) {
   const map = await mapSheets();
   const at = new Date().toISOString();
